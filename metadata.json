@@ -1,0 +1,8 @@
+{
+  "name": "Barcode Scanner Prototype",
+  "description": "A lightweight mobile prototype featuring a mock barcode scanner and simulated push notifications.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
