@@ -1,4 +1,4 @@
-import { Bell, CheckCircle, Package, Gift, Timer, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { Bell, CheckCircle, Package, Gift, Timer, ShieldAlert, ShieldCheck, ShieldX, Smartphone } from 'lucide-react';
 import { AppNotification } from '../types';
 import { motion } from 'motion/react';
 
@@ -7,9 +7,11 @@ interface Props {
   onTriggerTest: () => void;
   onTriggerOffer: () => void;
   onTriggerDelayed: () => void;
+  onTriggerCapacitor: () => void;
   onClear: () => void;
   unreadCount: number;
   permissionStatus: NotificationPermission;
+  capacitorPermission: string;
   onRequestPermission: () => void;
 }
 
@@ -18,49 +20,82 @@ export default function NotificationsView({
   onTriggerTest, 
   onTriggerOffer, 
   onTriggerDelayed,
+  onTriggerCapacitor,
   onClear,
   permissionStatus,
+  capacitorPermission,
   onRequestPermission
 }: Props) {
   return (
     <div className="flex flex-col h-full bg-white relative">
-      <div className="pt-10 px-6 pb-4 bg-white flex items-center justify-between shrink-0 z-10 relative border-b border-slate-50">
-        <h1 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
-          Alerts
-        </h1>
-        <div className="flex items-center gap-3">
-          {permissionStatus === 'default' && (
-            <button 
-              onClick={onRequestPermission}
-              className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full flex items-center gap-1 animate-pulse"
-            >
-              <ShieldAlert className="w-3 h-3" />
-              Enable Native
-            </button>
-          )}
-          {permissionStatus === 'granted' && (
-            <div className="text-[10px] font-bold text-green-600 px-2.5 py-1 rounded-full flex items-center gap-1 bg-green-50">
-              <ShieldCheck className="w-3 h-3" />
-              Native On
-            </div>
-          )}
-          {permissionStatus === 'denied' && (
-            <button 
-              onClick={onRequestPermission}
-              className="text-[10px] font-bold text-red-500 px-2.5 py-1 rounded-full flex items-center gap-1 bg-red-50 hover:bg-red-100 transition-all border border-red-100 shadow-sm whitespace-nowrap"
-            >
-              <ShieldX className="w-3 h-3" />
-              Reset in Browser ↗
-            </button>
-          )}
+      <div className="pt-10 px-4 pb-4 bg-white flex flex-col shrink-0 z-10 relative border-b border-slate-50 gap-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+            Alerts
+          </h1>
           {notifications.length > 0 && (
             <button 
               onClick={onClear} 
-              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-all ml-2"
+              className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-all"
             >
               Clear
             </button>
           )}
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {/* Web Notification Status */}
+          <div className="flex flex-col gap-1 ring-1 ring-slate-100 p-2 rounded-xl bg-slate-50 min-w-[100px]">
+             <span className="text-[8px] font-bold text-slate-400 uppercase">Web APIs</span>
+             {permissionStatus === 'default' && (
+              <button 
+                onClick={onRequestPermission}
+                className="text-[9px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md flex items-center gap-1"
+              >
+                <ShieldAlert className="w-3 h-3" />
+                Enable
+              </button>
+            )}
+            {permissionStatus === 'granted' && (
+              <div className="text-[9px] font-bold text-green-600 px-2 py-0.5 rounded-md flex items-center gap-1 bg-green-50">
+                <ShieldCheck className="w-3 h-3" />
+                Granted
+              </div>
+            )}
+            {permissionStatus === 'denied' && (
+              <button 
+                onClick={onRequestPermission}
+                className="text-[9px] font-bold text-red-500 px-2 py-0.5 rounded-md flex items-center gap-1 bg-red-50 border border-red-100"
+              >
+                <ShieldX className="w-3 h-3" />
+                Blocked
+              </button>
+            )}
+          </div>
+
+          {/* Capacitor Status */}
+          <div className="flex flex-col gap-1 ring-1 ring-slate-100 p-2 rounded-xl bg-slate-50 min-w-[100px]">
+             <span className="text-[8px] font-bold text-slate-400 uppercase">Capacitor</span>
+             {capacitorPermission === 'granted' ? (
+                <div className="text-[9px] font-bold text-blue-600 px-2 py-0.5 rounded-md flex items-center gap-1 bg-blue-50">
+                  <Smartphone className="w-3 h-3" />
+                  Active
+                </div>
+             ) : capacitorPermission === 'unavailable' ? (
+                <div className="text-[9px] font-bold text-slate-400 px-2 py-0.5 rounded-md flex items-center gap-1 bg-slate-100">
+                  <ShieldX className="w-3 h-3" />
+                  Web Mode
+                </div>
+             ) : (
+                <button 
+                  onClick={onRequestPermission}
+                  className="text-[9px] font-bold text-amber-600 px-2 py-0.5 rounded-md flex items-center gap-1 bg-amber-50 border border-amber-100"
+                >
+                  <Smartphone className="w-3 h-3" />
+                  Setup
+                </button>
+             )}
+          </div>
         </div>
       </div>
 
@@ -102,6 +137,13 @@ export default function NotificationsView({
       </div>
 
       <div className="p-6 bg-white border-t border-slate-100 shrink-0 space-y-3">
+         <button
+           onClick={onTriggerCapacitor}
+           className="w-full bg-slate-900 text-white hover:bg-slate-800 py-3.5 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-slate-900/20"
+         >
+           <Smartphone className="w-4 h-4" />
+           Capacitor Native Push
+         </button>
          <button
            onClick={onTriggerDelayed}
            className="w-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 py-3.5 rounded-2xl font-bold transition-colors flex justify-center items-center gap-2 shadow-sm shadow-amber-100/50"

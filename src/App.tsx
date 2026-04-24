@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ScanLine, Bell, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import Scanner from './components/Scanner';
 import NotificationsView from './components/NotificationsView';
 import HomeView from './components/HomeView';
@@ -23,6 +24,7 @@ export default function App() {
   const [toast, setToast] = useState<AppNotification | null>(null);
 
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+  const [capacitorPermission, setCapacitorPermission] = useState<string>('unknown');
 
   // Request native permission on mount if supported
   useEffect(() => {
@@ -46,19 +48,38 @@ export default function App() {
     }
   }, [notifPermission]);
 
-  const requestPermission = async () => {
-    if (!('Notification' in window)) return;
-    
-    try {
-      const permission = await Notification.requestPermission();
-      setNotifPermission(permission);
-      
-      // If still denied, we can't trigger a prompt, but we've synced the state
-      if (permission === 'granted') {
-        new Notification("Notifications Enabled!", { body: "You will now receive system alerts." });
+  // Check Capacitor permissions
+  useEffect(() => {
+    const checkCapacitor = async () => {
+      try {
+        const status = await LocalNotifications.checkPermissions();
+        setCapacitorPermission(status.display);
+      } catch (e) {
+        setCapacitorPermission('unavailable');
       }
-    } catch (err) {
-      console.warn("Permission request failed", err);
+    };
+    checkCapacitor();
+  }, []);
+
+  const requestPermission = async () => {
+    if ('Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        setNotifPermission(permission);
+        if (permission === 'granted') {
+          new Notification("Notifications Enabled!", { body: "You will now receive system alerts." });
+        }
+      } catch (err) {
+        console.warn("Permission request failed", err);
+      }
+    }
+
+    // Also try Capacitor if possible
+    try {
+      const capStatus = await LocalNotifications.requestPermissions();
+      setCapacitorPermission(capStatus.display);
+    } catch (e) {
+      // Ignored if not in capacitor
     }
   };
 
@@ -157,6 +178,42 @@ export default function App() {
     triggerPush(newNotif);
   };
 
+  const handleTriggerCapacitor = async () => {
+    try {
+      const id = Math.floor(Math.random() * 1000000);
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: "Capacitor Alert 📱",
+            body: "This notification was sent via the Capacitor plugin!",
+            id: id,
+            schedule: { at: new Date(Date.now() + 1000) },
+          }
+        ]
+      });
+
+      const newNotif: AppNotification = {
+        id: id.toString(),
+        title: "Capacitor Test",
+        body: "Capacitor notification successfully scheduled.",
+        timestamp: new Date(),
+        read: false
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    } catch (err) {
+      console.warn("Capacitor Notifications failed. Likely not in a native app context.");
+      // Fallback to web toast so the user sees SOMETHING happened
+      const newNotif: AppNotification = {
+        id: generateId(),
+        title: "Capacitor Error",
+        body: "Capacitor plugin failed. Native wrapper required.",
+        timestamp: new Date(),
+        read: false
+      };
+      triggerPush(newNotif);
+    }
+  };
+
   const markAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
@@ -201,9 +258,11 @@ export default function App() {
               onTriggerTest={handleTriggerTest}
               onTriggerOffer={handleTriggerOffer}
               onTriggerDelayed={handleTriggerDelayed}
+              onTriggerCapacitor={handleTriggerCapacitor}
               onClear={() => setNotifications([])}
               unreadCount={unreadCount}
               permissionStatus={notifPermission}
+              capacitorPermission={capacitorPermission}
               onRequestPermission={requestPermission}
             />
           )}
