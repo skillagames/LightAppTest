@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ScanLine, Bell } from 'lucide-react';
+import { ScanLine, Bell, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Scanner from './components/Scanner';
 import NotificationsView from './components/NotificationsView';
+import HomeView from './components/HomeView';
 import { AppNotification } from './types';
 
 const DUMMY_BARCODES = [
@@ -17,16 +18,49 @@ function generateId() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<'scan' | 'notifications'>('scan');
+  const [tab, setTab] = useState<'home' | 'scan' | 'notifications'>('home');
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [toast, setToast] = useState<AppNotification | null>(null);
 
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+
   // Request native permission on mount if supported
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(err => console.debug(err));
+    if ('Notification' in window) {
+      setNotifPermission(Notification.permission);
+      
+      // Request on first load if default
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          setNotifPermission(permission);
+        }).catch(err => console.debug(err));
+      }
+
+      // Poll slightly to catch manual overrides in browser settings
+      const interval = setInterval(() => {
+        if (Notification.permission !== notifPermission) {
+          setNotifPermission(Notification.permission);
+        }
+      }, 2000);
+      return () => clearInterval(interval);
     }
-  }, []);
+  }, [notifPermission]);
+
+  const requestPermission = async () => {
+    if (!('Notification' in window)) return;
+    
+    try {
+      const permission = await Notification.requestPermission();
+      setNotifPermission(permission);
+      
+      // If still denied, we can't trigger a prompt, but we've synced the state
+      if (permission === 'granted') {
+        new Notification("Notifications Enabled!", { body: "You will now receive system alerts." });
+      }
+    } catch (err) {
+      console.warn("Permission request failed", err);
+    }
+  };
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -36,19 +70,57 @@ export default function App() {
     
     // Auto-dismiss the toast after 4s
     setTimeout(() => setToast(currentToast => {
-      // Prevent deleting a newer toast if it was triggered concurrently
       if (currentToast?.id === notif.id) return null;
       return currentToast;
     }), 4000);
     
-    // Also dispatch native notification if allowed
-    if ('Notification' in window && Notification.permission === 'granted') {
+    // Dispatch native system notification via Service Worker (preferred)
+    if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.showNotification(notif.title, {
+          body: notif.body,
+          icon: '/favicon.ico',
+          badge: '/favicon.ico',
+          vibrate: [200, 100, 200],
+          tag: 'barcode-prototype-notif'
+        });
+      });
+    } 
+    // Fallback if no SW or old browser
+    else if ('Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification(notif.title, { body: notif.body });
+        new Notification(notif.title, { 
+          body: notif.body,
+          icon: '/favicon.ico'
+        });
       } catch (err) {
         console.debug('Native notification failed', err);
       }
     }
+  };
+
+  const handleTriggerDelayed = () => {
+    const id = generateId();
+    // Show a small UI feedback that it's scheduled
+    const scheduledNotif: AppNotification = {
+      id,
+      title: "Notification Scheduled",
+      body: "Wait 5 seconds... switch tabs to test!",
+      timestamp: new Date(),
+      read: true
+    };
+    setNotifications(prev => [scheduledNotif, ...prev]);
+
+    setTimeout(() => {
+      const newNotif: AppNotification = {
+        id: generateId(),
+        title: "⏰ Timer Alert!",
+        body: "This is your 5-second delayed local notification.",
+        timestamp: new Date(),
+        read: false
+      };
+      triggerPush(newNotif);
+    }, 5000);
   };
 
   const handleSimulateScan = () => {
@@ -94,6 +166,11 @@ export default function App() {
     if (tab === 'notifications') {
       markAllRead();
       setToast(null); // Clear active toast popup to avoid clutter
+      
+      // Sync permission state when entering this tab
+      if ('Notification' in window) {
+        setNotifPermission(Notification.permission);
+      }
     }
   }, [tab]);
 
@@ -109,15 +186,25 @@ export default function App() {
         
         {/* App Content Area */}
         <div className="flex-1 bg-white relative overflow-hidden flex flex-col">
-          {tab === 'scan' ? (
+          {tab === 'home' && (
+            <HomeView 
+              onNavigate={(newTab) => setTab(newTab)} 
+              unreadCount={unreadCount} 
+            />
+          )}
+          {tab === 'scan' && (
             <Scanner onSimulateScan={handleSimulateScan} />
-          ) : (
+          )}
+          {tab === 'notifications' && (
             <NotificationsView 
               notifications={notifications} 
               onTriggerTest={handleTriggerTest}
               onTriggerOffer={handleTriggerOffer}
+              onTriggerDelayed={handleTriggerDelayed}
               onClear={() => setNotifications([])}
               unreadCount={unreadCount}
+              permissionStatus={notifPermission}
+              onRequestPermission={requestPermission}
             />
           )}
         </div>
@@ -150,13 +237,22 @@ export default function App() {
 
         {/* Bottom Navigation */}
         <div className="p-6 bg-white border-t border-slate-100 flex justify-around items-center shrink-0 z-40 relative">
+           {/* Home Tab */}
+           <button 
+             onClick={() => setTab('home')} 
+             className={`flex flex-col items-center gap-1 transition-colors ${tab === 'home' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-500'}`}
+           >
+             <Home className="w-6 h-6" />
+             <span className="text-[10px] font-bold uppercase tracking-wider">Home</span>
+           </button>
+
            {/* Scan Tab */}
            <button 
              onClick={() => setTab('scan')} 
              className={`flex flex-col items-center gap-1 transition-colors ${tab === 'scan' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-500'}`}
            >
              <ScanLine className="w-6 h-6" />
-             <span className="text-[10px] font-bold">Scan</span>
+             <span className="text-[10px] font-bold uppercase tracking-wider">Scan</span>
            </button>
 
            {/* Notifications Tab */}
@@ -178,7 +274,7 @@ export default function App() {
                  </motion.span>
                )}
              </AnimatePresence>
-             <span className="text-[10px] font-bold">Alerts</span>
+             <span className="text-[10px] font-bold uppercase tracking-wider">Alerts</span>
            </button>
         </div>
 
